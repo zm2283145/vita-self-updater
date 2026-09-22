@@ -2,18 +2,13 @@
 #include "vita_updater_core.hpp"
 #include "vita_updater_platform.hpp"
 
-#include <vita2d.h>
-
 #include <psp2/appmgr.h>
-#include <psp2/ctrl.h>
 #include <psp2/kernel/processmgr.h>
 
-#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <cstdio>
 #include <string>
-#include <utility>
 
 extern "C" {
 unsigned int _newlib_heap_size_user = 32u * 1024u * 1024u;
@@ -26,84 +21,7 @@ using vita::updater::Journal;
 using vita::updater::JournalState;
 using vita::updater::SignedManifest;
 
-vita2d_pgf* g_font = nullptr;
-bool g_graphics_initialized = false;
-std::string g_status;
-std::string g_detail;
-
-bool ensure_graphics() {
-    if (g_graphics_initialized) {
-        return g_font != nullptr;
-    }
-    sceCtrlSetSamplingMode(SCE_CTRL_MODE_ANALOG);
-    if (vita2d_init() < 0) {
-        return false;
-    }
-    g_graphics_initialized = true;
-    g_font = vita2d_load_default_pgf();
-    return g_font != nullptr;
-}
-
-void draw_screen(const char* instruction = nullptr) {
-    if (!ensure_graphics()) {
-        return;
-    }
-    vita2d_start_drawing();
-    vita2d_clear_screen();
-    vita2d_pgf_draw_text(g_font, 42.0f, 72.0f,
-        RGBA8(255, 255, 255, 255), 1.25f,
-        VITA_UPDATER_APP_NAME " temporary updater");
-    vita2d_pgf_draw_text(g_font, 42.0f, 126.0f,
-        RGBA8(116, 205, 255, 255), 1.0f, g_status.c_str());
-
-    std::string remaining = g_detail;
-    float y = 174.0f;
-    while (!remaining.empty() && y < 430.0f) {
-        std::size_t split = std::min<std::size_t>(remaining.size(), 86);
-        if (split < remaining.size()) {
-            const std::size_t space = remaining.rfind(' ', split);
-            if (space != std::string::npos && space > 20) {
-                split = space;
-            }
-        }
-        const std::string line = remaining.substr(0, split);
-        vita2d_pgf_draw_text(g_font, 42.0f, y,
-            RGBA8(230, 230, 230, 255), 0.85f, line.c_str());
-        remaining.erase(0, split);
-        while (!remaining.empty() && remaining.front() == ' ') {
-            remaining.erase(remaining.begin());
-        }
-        y += 32.0f;
-    }
-    if (instruction != nullptr) {
-        vita2d_pgf_draw_text(g_font, 42.0f, 500.0f,
-            RGBA8(255, 226, 110, 255), 0.9f, instruction);
-    }
-    vita2d_end_drawing();
-    vita2d_swap_buffers();
-}
-
-void set_status(std::string status, std::string detail = {}) {
-    g_status = std::move(status);
-    g_detail = std::move(detail);
-}
-
-unsigned wait_for_buttons(unsigned buttons) {
-    SceCtrlData previous{};
-    for (;;) {
-        SceCtrlData current{};
-        sceCtrlPeekBufferPositive(0, &current, 1);
-        const unsigned pressed = current.buttons & ~previous.buttons;
-        if ((pressed & buttons) != 0) {
-            return pressed & buttons;
-        }
-        previous = current;
-        draw_screen(g_status == "Recovery required" ?
-            "X: roll back to the previous version" :
-            "X: continue");
-        sceKernelDelayThread(16 * 1000);
-    }
-}
+void set_status(const std::string&, const std::string& = {}) {}
 
 bool verify_staged_update(
     SignedManifest& manifest, std::string& package_path, std::string& error) {
@@ -248,109 +166,53 @@ bool perform_update(Journal& journal, std::string& error) {
 }  // namespace
 
 int main() {
-    bool launch_after_shutdown = false;
     sceAppMgrDestroyOtherApp();
     sceKernelPowerLock(SCE_KERNEL_POWER_TICK_DISABLE_AUTO_SUSPEND);
 
     Journal journal;
     std::string error;
     if (!vita::updater::read_journal(journal, error)) {
-        g_status = "Recovery data is invalid";
-        g_detail = error +
-            " The helper will remain installed. Reinstall "
-            VITA_UPDATER_APP_NAME " manually.";
-        wait_for_buttons(SCE_CTRL_CROSS);
         goto shutdown;
     }
 
     if (journal.state == JournalState::RolledBack) {
-        set_status("Previous version restored",
-            "Press X to close this helper, then launch "
-            VITA_UPDATER_APP_NAME " from LiveArea.");
-        wait_for_buttons(SCE_CTRL_CROSS);
         goto shutdown;
     }
     if (journal.state == JournalState::CleanupPending) {
-        set_status("Update already confirmed",
-            "Close this helper and launch " VITA_UPDATER_APP_NAME
-            " directly to finish cleanup.");
-        wait_for_buttons(SCE_CTRL_CROSS);
         goto shutdown;
     }
     if (journal.state == JournalState::Promoting ||
         journal.state == JournalState::AwaitingHealth ||
         journal.state == JournalState::RecoveryFailed)
     {
-        g_status = "Recovery required";
-        g_detail =
-            "The previous update did not confirm a healthy launch. The "
-            "preserved installation can be restored without touching saves.";
-        wait_for_buttons(SCE_CTRL_CROSS);
-        if (rollback(journal, error) >= 0) {
-            set_status("Rollback completed",
-                "The previous " VITA_UPDATER_APP_NAME
-                " installation was restored. Press X to close this helper, "
-                "then launch it from LiveArea.");
-            wait_for_buttons(SCE_CTRL_CROSS);
-            goto shutdown;
-        }
-        goto recovery_failed;
+        rollback(journal, error);
+        goto shutdown;
     }
 
     if (journal.state != JournalState::HelperInstalled &&
         journal.state != JournalState::Staged)
     {
         error = "The updater journal is not in a runnable state.";
-        goto launch_failed;
+        goto shutdown;
     }
     if (perform_update(journal, error)) {
-        launch_after_shutdown = true;
         goto shutdown;
     }
     if (journal.state == JournalState::Promoting ||
         journal.state == JournalState::AwaitingHealth)
     {
         if (rollback(journal, error) >= 0) {
-            set_status("Update failed; rollback completed",
-                error + " The previous installation was restored. Close this "
-                "helper and launch " VITA_UPDATER_APP_NAME " from LiveArea.");
-            wait_for_buttons(SCE_CTRL_CROSS);
             goto shutdown;
         }
-        goto recovery_failed;
+        goto shutdown;
     }
-
-launch_failed:
-    g_status = "Update could not continue";
-    g_detail = error +
-        " The current " VITA_UPDATER_APP_NAME
-        " installation was not replaced. This helper will "
-        "remain available for recovery. Press X to return to LiveArea.";
-    wait_for_buttons(SCE_CTRL_CROSS);
-    goto shutdown;
-
-recovery_failed:
-    g_status = "Automatic recovery failed";
-    g_detail = error +
-        " Do not delete the backup under " VITA_UPDATER_STAGING_DIRECTORY
-        "/. Leave this "
-        "helper installed and retry, or reinstall the application manually.";
-    wait_for_buttons(SCE_CTRL_CROSS);
 
 shutdown:
-    if (g_font != nullptr) {
-        vita2d_free_pgf(g_font);
-    }
-    if (g_graphics_initialized) {
-        vita2d_fini();
-    }
     sceKernelPowerUnlock(SCE_KERNEL_POWER_TICK_DISABLE_AUTO_SUSPEND);
-    if (launch_after_shutdown) {
-        const int result =
-            vita::updater::launch_title(vita::updater::kMainTitleId);
-        if (result < 0) {
-            sceKernelExitProcess(result);
-        }
+    const int result =
+        vita::updater::launch_title(vita::updater::kMainTitleId);
+    if (result < 0) {
+        sceKernelExitProcess(result);
     }
     sceKernelExitProcess(0);
     return 0;

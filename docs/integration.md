@@ -61,12 +61,12 @@ updater/sce_sys/param.sfo
 updater/sce_sys/package/head.bin
 ```
 
-Keep the helper's success path headless. The supplied implementation delays
-`vita2d` and PGF initialization until an error or rollback prompt is required.
-Do not add splash screens, progress rendering, or eager graphics
-initialization before its `psgm:play` handoff; hardware testing found that
-tearing down GXM immediately before launching the main title can crash the GPU
-driver.
+Keep the helper entirely headless. The supplied implementation does not link
+`vita2d`, GXM, PGF, common-dialog, display, or controller libraries. Errors and
+rollback results are written to the transaction journal for the main
+application to display. Do not add splash screens or progress rendering;
+hardware testing found that tearing down GXM immediately before launching the
+main title can crash the GPU driver.
 
 The main title must be created with:
 

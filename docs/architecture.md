@@ -26,9 +26,8 @@ before the main application exits.
    the new package and writes `state=awaiting-health`.
 7. On the normal success path the helper never initializes PGF,
    `vita2d`, or GXM. It launches the main title through the `psgm:play` URI
-   and immediately exits. Graphics are initialized lazily only for an error
-   or rollback prompt, after which the helper returns to LiveArea instead of
-   chaining directly into the main title.
+   and immediately exits. Errors and rollback results remain in the durable
+   journal for the main application to display.
 8. After the configured healthy-frame threshold, the new title writes
    `state=cleanup-pending`, then deletes the helper and staging tree.
 
