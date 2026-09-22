@@ -1081,6 +1081,7 @@ int promoter_install(const char* package_path) {
 }
 
 int promoter_delete(const char* title_id) {
+    sceAppMgrDestroyOtherApp();
     return with_promoter(
         [title_id] { return scePromoterUtilityDeletePkg(title_id); });
 }
