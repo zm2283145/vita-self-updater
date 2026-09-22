@@ -70,10 +70,9 @@ $elf = Join-Path $build 'updater.elf'
 $velf = Join-Path $build 'updater.velf'
 $link = @('-fshort-enums', '-Wl,-q', '-Wl,--gc-sections') + $objectFiles + @(
     '-Wl,--start-group',
-    '-larchive', '-lsodium', '-lbz2', '-lzstd', '-lz', '-lvita2d', '-lstdc++',
+    '-larchive', '-lsodium', '-lbz2', '-lzstd', '-lz', '-lstdc++',
     '-Wl,--end-group',
-    '-lSceCtrl_stub', '-lSceDisplay_stub', '-lSceGxm_stub',
-    '-lSceCommonDialog_stub', '-lScePgf_stub', '-lSceAppMgr_stub',
+    '-lSceAppMgr_stub',
     '-lScePromoterUtil_stub', '-lSceSysmodule_stub', '-lSceProcessmgr_stub',
     '-lSceSysmem_stub', '-lSceLibKernel_stub', '-lSceKernelThreadMgr_stub',
     '-lm', '-o', $elf
