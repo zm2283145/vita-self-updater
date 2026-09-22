@@ -14,10 +14,10 @@ content, while a module loaded with `sceKernelLoadStartModule` dies with the
 current process. This framework therefore installs a **temporary second
 title**. Its bubble is briefly visible. The normal success path is headless:
 the helper never initializes font or graphics resources before using the same
-URI-launch-and-exit sequence as VitaShell. Graphics are initialized lazily
-only when an error or rollback decision must be shown. Launching after a
-graphical helper had torn down GXM caused hardware-observed GPU/SceShell
-failures.
+URI-launch-and-exit sequence as VitaShell. It has no graphics dependencies;
+errors and rollback results are persisted in the transaction journal for the
+main application to display. Launching after a graphical helper had torn down
+GXM caused hardware-observed GPU/SceShell failures.
 
 The main updater executable uses the unsafe auth ID
 `0x2808000000000000`, as VitaShell does for package-promoter access. A
