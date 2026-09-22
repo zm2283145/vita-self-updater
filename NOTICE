@@ -1,0 +1,8 @@
+Vita Self-Updater
+Copyright (C) 2026 the Vita Self-Updater contributors
+
+The package-header transform and head.bin template are derived from VitaShell:
+Copyright (C) 2015-2018 TheFloW
+https://github.com/TheOfficialFloW/VitaShell
+
+This repository is distributed under GPL-3.0-or-later. See COPYING.

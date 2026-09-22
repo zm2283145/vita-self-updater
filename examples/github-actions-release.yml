@@ -1,0 +1,33 @@
+# Copy the relevant steps into the job that creates your draft release.
+# VITA_UPDATE_PRIVATE_KEY_PEM_B64 must be an encrypted repository secret.
+- name: Write temporary signing key
+  shell: bash
+  env:
+    PRIVATE_KEY_B64: ${{ secrets.VITA_UPDATE_PRIVATE_KEY_PEM_B64 }}
+  run: |
+    printf '%s' "$PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/vita-update.pem"
+    chmod 600 "$RUNNER_TEMP/vita-update.pem"
+
+- name: Sign updater manifest
+  shell: bash
+  run: |
+    python tools/sign-manifest.py \
+      --version "${GITHUB_REF_NAME#v}" \
+      --asset "dist/ExampleApp.vpk" \
+      --private-key "$RUNNER_TEMP/vita-update.pem" \
+      --output "dist/vita-update-manifest.txt"
+
+- name: Upload verified assets to draft
+  shell: bash
+  env:
+    GH_TOKEN: ${{ github.token }}
+  run: |
+    gh release upload "$GITHUB_REF_NAME" \
+      dist/ExampleApp.vpk \
+      dist/vita-update-manifest.txt \
+      --clobber
+
+- name: Remove temporary signing key
+  if: always()
+  shell: bash
+  run: rm -f "$RUNNER_TEMP/vita-update.pem"
